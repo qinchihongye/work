@@ -26,7 +26,7 @@ class RagSearchReq(BaseModel):
     filter_top_k: Optional[int] = 10
 
 
-@rag_router.post("/rag-search")
+@rag_router.post("/google-search")
 async def rag_search(req: RagSearchReq, authorization: str = Header(None)):
     authApiKey = os.getenv("AUTH_API_KEY")
     apiKey = ""

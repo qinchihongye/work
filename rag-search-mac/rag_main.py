@@ -1,3 +1,4 @@
+import uvicorn
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from components.log import init_log, log
@@ -32,3 +33,7 @@ app.include_router(rag_router)
 @app.get("/")
 async def root():
     return {"ping": "pong"}
+
+
+if __name__ == "__main__":
+    uvicorn.run("rag_main:app",host='0.0.0.0',port=8069)
