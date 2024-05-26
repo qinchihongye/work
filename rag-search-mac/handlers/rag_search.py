@@ -105,7 +105,7 @@ async def filter_research(filter_results:FliterResults):
                                             , filter_results.query
                                             , 0
                                             , 10)
-            return {"1":"sssssssss"}
+            # return {"1":"sssssssss"}
 
             return resp_data({
                              "search_results": filtered_results,

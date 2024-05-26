@@ -24,14 +24,13 @@ def store_results(results):
     # index = VectorStoreIndex(nodes)
     # index.storage_context.persist(persist_dir="./storage")
 
-    storage_context = get_storage_context()
+    # storage_context = get_storage_context()
     service_context = get_service_context()
 
     index = VectorStoreIndex(nodes=nodes,
-                             storage_context=storage_context,
+                            #  storage_context=storage_context,
                              service_context=service_context)
 
-    print("build index ok", storage_context)
 
     return index
 

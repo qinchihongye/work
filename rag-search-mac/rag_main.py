@@ -4,11 +4,14 @@ from contextlib import asynccontextmanager
 from components.log import init_log, log
 from components.env import init_env
 from handlers.rag_search import rag_router
+import dotenv
+
+dotenv.load_dotenv()
 
 
 def startup():
     print("init log")
-    init_log()
+    init_log() 
     print("init env")
     init_env()
 
@@ -36,4 +39,4 @@ async def root():
 
 
 if __name__ == "__main__":
-    uvicorn.run("rag_main:app",host='0.0.0.0',port=8069)
+    uvicorn.run("rag_main:app",host='0.0.0.0',port=8069,reload=True)
