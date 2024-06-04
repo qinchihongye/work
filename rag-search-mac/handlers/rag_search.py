@@ -7,7 +7,10 @@ from services.document.store import store_results
 from services.document.query import query_results
 from services.web import batch_fetch_urls
 from utils.resp import resp_err, resp_data
+
 import requests
+import re
+import json
 
 rag_router = APIRouter()
 
@@ -69,6 +72,7 @@ async def rag_search(req: RagSearchReq, authorization: str = Header(None)):
         search_results = search_results_list
         return resp_data({
                             "query":req.query,
+                            "topN":req.filter_top_k,
                             "search_results": search_results,
                         })
     except Exception as e:
@@ -77,7 +81,8 @@ async def rag_search(req: RagSearchReq, authorization: str = Header(None)):
  
 class SearchResults(BaseModel):
     query:str
-    search_results:list 
+    topN:int
+    search_results:list
  
 @rag_router.post("/reranking")
 async def reranking_research(search_results:SearchResults):
@@ -86,6 +91,10 @@ async def reranking_research(search_results:SearchResults):
         try:
             results_to_rerank = search_results.search_results
             reranked_results = reranking(results_to_rerank, search_results.query)
+
+            # 取 topN
+            
+            reranked_results = reranked_results[:search_results.topN]
             return resp_data({
                                  "query":search_results.query,
                                  "search_results": reranked_results,
@@ -113,6 +122,30 @@ async def filter_research(filter_results:FliterResults):
         except Exception as e:
             print(f"filter content failed: {e}")
 
+class SearchStr(BaseModel):
+    code:int
+    message:str
+    data:dict
+
+@rag_router.post("/handle_search")
+async def handle_search(search_str:SearchStr):
+    return search_str.data
+
+@rag_router.post("/handle_str") # 有问题
+async def main(s: str,) -> dict:
+    if s.startswith('"') and s.endswith('"'):
+        s = s[1:-1]
+        s = re.sub(r'\\n', '\n', s)
+        s = re.sub(r'\\"', '"', s)
+        s = re.sub(r'\\t', '\t', s)
+    s = re.sub(r"```(?:json|JSON)*([\s\S]*?)```", r"\1", s).strip()
+
+    try:
+        result = json.loads(s)
+    except json.JSONDecodeError:
+        return {"result": "error"}
+    else:
+        return {"result": json.loads(s)}
 
 def search(query, num, locale=''):
     params = {
@@ -132,28 +165,6 @@ def search(query, num, locale=''):
         raise e
 
 
-# def reranking(search_results, query):
-#     try:
-#         index = store_results(results=search_results)
-#         match_results = query_results(index, query, 0.00, len(search_results))
-#     except Exception as e:
-#         print(f"reranking search results failed: {e}")
-#         raise e
-
-#     score_maps = {}
-#     for result in match_results:
-#         score_maps[result["uuid"]] = result["score"]
-
-#     for result in search_results:
-#         if result["uuid"] in score_maps:
-#             result["score"] = score_maps[result["uuid"]]
-
-#     sorted_search_results = sorted(search_results,
-#                                    key=lambda x: (x['score']),
-#                                    reverse=True)
-
-#     return sorted_search_results
-
 def reranking(search_results, query):
     try:
         documents = [i['snippet'] for i in search_results]
@@ -166,7 +177,7 @@ def reranking(search_results, query):
                           ,"query": query
                           ,"top_n": 11
                           ,"documents": documents
-                          }
+                          } 
         # cohere rerank-multilingual-v3.0
         # url = "http://38.54.107.72:8031/v1/rerank"
         # bge
