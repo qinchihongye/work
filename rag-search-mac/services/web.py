@@ -10,6 +10,8 @@ import re
 import uuid
 import time
 
+from services.qwen.res_qwen import save_text_as_unique_file,get_model_response
+
 
 async def fetch_url(session, url):
     async with session.get(url) as response:
@@ -35,7 +37,7 @@ async def html_to_markdown(html):
         # 去除空白符号
         markdown = await clean_chinese_text(markdown)
         # # 存为 txt 文件（uuid+timestame）
-        # f_name = await save_text_as_unique_file(markdown)
+        # f_name = save_text_as_unique_file(markdown)
         # # 提示词
         # prompt = """
         # 您是一款专业的文本摘要专家，擅长语言理解、识别和提炼文本中的主要观点、关键信息摘要总结,需要注意,你必须保留关键的数字信息。
@@ -52,7 +54,7 @@ async def html_to_markdown(html):
         # - 依此类推，列出其他关键点。
         # 仅提供输出内容，不要使用引号包裹回答。请用中文回应。"""
         # # 对网页信息抽取，总结
-        # markdown = await get_model_response(prompt=prompt
+        # markdown = get_model_response(prompt=prompt
         #                                    ,file_name=f_name
         #                                    ,model_name='qwen-long'
         #                                    )
@@ -113,49 +115,3 @@ async def clean_chinese_text(text):
     cleaned_text = cleaned_text.strip()
     
     return cleaned_text
-
-
-async def get_model_response(prompt,file_name,model_name='qwen-long'):
-    if model_name=='qwen-long':
-        client = OpenAI(
-                        api_key="sk-8acaedb4b50d4a478221c2020969ee81",  # 替换成真实DashScope的API_KEY
-                        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",  # 填写DashScope服务endpoint
-                       )
-        file = client.files.create(file=Path(file_name), purpose="file-extract")
-        completion = client.chat.completions.create(
-            model="qwen-long",
-            messages=[
-                {
-                    'role': 'system',
-                    'content': f'fileid://{file.id}'
-                },
-                {
-                    'role': 'user',
-                    'content': prompt
-                }
-            ],
-            stream=False
-        )
-        # 用完删除文件
-        client.files.delete(file.id)
-        
-        return completion.choices[0].message.content
-    
-    elif model_name=='hunyuan-lite':
-        pass
-    else:
-        pass
-
-async def save_text_as_unique_file(text):
-    # 生成UUID
-    unique_id = uuid.uuid4()
-    # 获取当前时间戳，精确到纳秒
-    timestamp = time.strftime("%Y%m%d%H%M%S", time.localtime())
-    # 创建文件名，格式为：文本摘要_时间戳_UUID.txt
-    filename = f"./file/temp_txt_{timestamp}_{unique_id}.txt"
-    
-    # 将文本内容写入文件
-    with open(filename, 'w', encoding='utf-8') as file:
-        file.write(text)
-    
-    return filename

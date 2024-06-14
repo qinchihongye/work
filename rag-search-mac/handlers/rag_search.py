@@ -12,6 +12,9 @@ import requests
 import re
 import json
 
+from services.qwen.res_qwen import save_text_as_unique_file,get_model_response
+
+
 rag_router = APIRouter()
 
 
@@ -50,7 +53,7 @@ async def rag_search(req: RagSearchReq, authorization: str = Header(None)):
         url_list = [i['link'] for i in search_results] # 记录已经爬取过 content 的 url
         search_results_list = [i for i in search_results if len(i['content']) > len(i['snippet'])]
         target_times = req.search_n # 目标次数（含有 content 的）
-        search_times = req.search_n # 实际搜索次数
+        search_times = req.search_n # 实际搜索次数,初始设定为目标次数
         cycle_times = 0   # 记录循环次数 
         while (len(search_results_list) < target_times) and (cycle_times < 5): # 若含content 不满 10 条，且限制最高只循环 5 次
             # search_results_list.append([1])
@@ -78,12 +81,12 @@ async def rag_search(req: RagSearchReq, authorization: str = Header(None)):
     except Exception as e:
         return resp_err(f"get search results failed: {e}")
 
- 
+
 class SearchResults(BaseModel):
     query:str
     topN:int
     search_results:list
- 
+
 @rag_router.post("/reranking")
 async def reranking_research(search_results:SearchResults):
         # 2. reranking
@@ -102,11 +105,54 @@ async def reranking_research(search_results:SearchResults):
         except Exception as e:
             print(f"reranking search results failed: {e}")
 
+
+class PageContent(BaseModel):
+    query:str
+    content:str
+
+@rag_router.post("/summary_content")
+async def summary_content(page_content:PageContent):
+    question = page_content.query
+    content = page_content.content
+    filename = save_text_as_unique_file(text=content)
+    prompt = f"""
+    这是用户的搜索问题：{question}
+
+    您是一款专业的信息筛选处理专家，擅长信息提取、数据整合、格式化输出。
+    给您的是关于上述用户搜索问题的网页搜索结果，您的目标是从提供的网页内容中去除不相关信息，提炼出与用户搜索问题直接相关的信息，以帮助用户获取搜索结果或者问题答案。
+    需要注意,确保只提取与用户搜索问题直接相关的信息，忽略不相关或次要的细节,如果有关键的数字信息和日期信息请详细保留。
+    您需要严格按照以下步骤WorkFlow:
+    * WorkFlow
+    	1. 仔细阅读并理解用户的搜索问题。
+    	2. 仔细阅读并分析提供的相关网页搜索结果，识别与搜索问题相关的关键词和信息。
+    	3. 去除网页内容中与用户搜索问题无关的部分。
+    	4. 总结出关键信息,严格按照以下markdown格式的模板整理并输出信息:
+            ****************************
+            搜索问题：[用户的搜索问题]
+            相关背景：[简要介绍搜索词的主题和背景,如果有涉及事件的发生日期请带上,并引出下文相关内容，注意对输出内容进行润色]
+            	1.	[信息点1总结]：信息点 1 详细内容。
+            	2.	[信息点2总结]：信息点 2 详细内容。
+            	3.  [信息点3总结]：信息点 3 详细内容。
+                4.  [信息点4总结]：信息点 4 详细内容
+                。。。
+            总结：[对网页信息进行简短总结]
+            ****************************
+    """
+    res = get_model_response(prompt=prompt
+                            ,file_name=filename
+                            ,model_name='qwen-long'
+                            )
+    
+    if os.path.exists(filename):
+        os.remove(filename)
+
+    return res
+
 class FliterResults(BaseModel):
     query:str
     search_results:list
 
-@rag_router.post("/filter")
+@rag_router.post("/filter")  # 暂时没啥用
 async def filter_research(filter_results:FliterResults):
         # 4. filter content
         try:
@@ -127,25 +173,22 @@ class SearchStr(BaseModel):
     message:str
     data:dict
 
+
 @rag_router.post("/handle_search")
 async def handle_search(search_str:SearchStr):
     return search_str.data
 
-@rag_router.post("/handle_str") # 有问题
-async def main(s: str,) -> dict:
-    if s.startswith('"') and s.endswith('"'):
-        s = s[1:-1]
-        s = re.sub(r'\\n', '\n', s)
-        s = re.sub(r'\\"', '"', s)
-        s = re.sub(r'\\t', '\t', s)
-    s = re.sub(r"```(?:json|JSON)*([\s\S]*?)```", r"\1", s).strip()
+@rag_router.post("/handle_json") # 有问题
+def handle_json(json_str: str):
+    json_str = re.sub(r"```(?:json|JSON)*([\s\S]*?)```", r"\1", json_str).strip()
+    json_str = re.sub(r'\\"', '"',  json_str).strip()
+    return json.loads(json_str)
 
-    try:
-        result = json.loads(s)
-    except json.JSONDecodeError:
-        return {"result": "error"}
-    else:
-        return {"result": json.loads(s)}
+@rag_router.post("/merge_text")
+async def merge_text(topn_json:SearchStr):
+    all_content_list = [i['content'] for i in topn_json.data['search_results']]
+    all_content = '\n'.join(all_content_list)
+    return all_content
 
 def search(query, num, locale=''):
     params = {
@@ -167,7 +210,8 @@ def search(query, num, locale=''):
 
 def reranking(search_results, query):
     try:
-        documents = [i['snippet'] for i in search_results]
+        # documents = [i['snippet'] for i in search_results]
+        documents = [i['content'] for i in search_results]
         # reranking_dict = {"model": "rerank-english-v3.0"
         #                   ,"query": query
         #                   ,"top_n": 11
